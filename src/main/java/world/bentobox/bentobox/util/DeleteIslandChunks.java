@@ -37,6 +37,7 @@ public class DeleteIslandChunks {
     private boolean inDelete;
     private BentoBox plugin;
     private NMSAbstraction nms;
+    private boolean completed = false;
 
     public DeleteIslandChunks(BentoBox plugin, IslandDeletion di) {
         this.plugin = plugin;
@@ -52,7 +53,10 @@ public class DeleteIslandChunks {
         // Fire event
         IslandEvent.builder().deletedIslandInfo(di).reason(Reason.DELETE_CHUNKS).build();
         regenerateChunks();
+    }
 
+    public boolean isCompleted() {
+        return completed;
     }
 
     private void regenerateChunks() {
@@ -85,6 +89,7 @@ public class DeleteIslandChunks {
             IslandEvent.builder().deletedIslandInfo(di).reason(Reason.DELETED).build();
             // We're done
             task.cancel();
+            completed = true;
         }
         if (last) {
             inDelete = false;

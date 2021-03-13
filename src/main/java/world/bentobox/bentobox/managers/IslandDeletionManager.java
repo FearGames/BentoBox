@@ -1,15 +1,13 @@
 package world.bentobox.bentobox.managers;
 
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 
 import org.bukkit.Location;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 
+import org.bukkit.scheduler.BukkitRunnable;
 import world.bentobox.bentobox.BentoBox;
 import world.bentobox.bentobox.api.events.BentoBoxReadyEvent;
 import world.bentobox.bentobox.api.events.island.IslandDeleteChunksEvent;
@@ -33,6 +31,8 @@ public class IslandDeletionManager implements Listener {
     private Database<IslandDeletion> handler;
     private Set<Location> inDeletion;
 
+    private Queue<IslandDeletion> startupDeletionIslands = new LinkedList<>();
+
     public IslandDeletionManager(BentoBox plugin) {
         this.plugin = plugin;
         handler = new Database<>(plugin, IslandDeletion.class);
@@ -47,19 +47,43 @@ public class IslandDeletionManager implements Listener {
     public void onBentoBoxReady(BentoBoxReadyEvent e) {
         // Load list of islands that were mid deletion and delete them
         List<IslandDeletion> toBeDeleted = handler.loadObjects();
-        List<IslandDeletion> toBeRemoved = new ArrayList<>();
+        //List<IslandDeletion> toBeRemoved = new ArrayList<>();
         if (!toBeDeleted.isEmpty()) {
             plugin.log("There are " + toBeDeleted.size() + " islands pending deletion.");
             toBeDeleted.forEach(di -> {
                 if (di.getLocation() == null || di.getLocation().getWorld() == null) {
                     plugin.logError("Island queued for deletion refers to a non-existant game world. Skipping...");
-                    toBeRemoved.add(di);
+                    //toBeRemoved.add(di);
                 } else {
                     plugin.log("Resuming deletion of island at " + di.getLocation().getWorld().getName() + " " + Util.xyz(di.getLocation().toVector()));
                     inDeletion.add(di.getLocation());
-                    new DeleteIslandChunks(plugin, di);
+                    startupDeletionIslands.add(di);
                 }
             });
+            if (!startupDeletionIslands.isEmpty()) {
+                int total = startupDeletionIslands.size();
+                final int[] index = {0};
+                final DeleteIslandChunks[] current = new DeleteIslandChunks[1];
+                new BukkitRunnable() {
+                    @Override
+                    public void run() {
+                        if (current[0] != null && !current[0].isCompleted()) {
+                            // Still running
+                            return;
+                        }
+                        IslandDeletion deletion = startupDeletionIslands.poll();
+                        index[0]++;
+                        if (deletion == null) {
+                            startupDeletionIslands = null; // Free memory
+                            cancel();
+                            plugin.log("Completed startup island deletion task!");
+                            return;
+                        }
+                        plugin.log("Deleting island " + deletion.getUniqueId() + " (" + index[0] + "/" + total + ")");
+                        current[0] = new DeleteIslandChunks(plugin, deletion);
+                    }
+                }.runTaskTimer(plugin, 0, 1L);
+            }
         }
     }
 
